@@ -22,7 +22,6 @@ public abstract class ActionHandler : MonoBehaviour
         OnActionActivated?.Invoke(this);
 
     }
-
     // Завершение шага (вызывается из подклассов при выполнении действия)
     protected void CompleteAction(bool withError)
     {
@@ -35,7 +34,6 @@ public abstract class ActionHandler : MonoBehaviour
         
         // Присваиваем статус шага (корректно или с ошибкой)
         status = withError ? ActionStatus.CompletedWithError : ActionStatus.CompletedCorrect;
-        Debug.Log(status);
         // событие завершения шага
         OnActionCompleted?.Invoke(this);
     }

@@ -8,6 +8,7 @@ public class PointerSelectHandler : ActionHandler
 
     void Start()
     {
+        _interactable = GetComponent<XRSimpleInteractable>();
         // Подписываемся на событие "выбора" объекта лучом
         _interactable.selectEntered.AddListener(OnPointerSelect);
     }
