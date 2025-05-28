@@ -14,11 +14,23 @@ public class TaskManager : MonoBehaviour
     //public AudioSource audioSource;
     //public AudioClip successClip;
     //public AudioClip errorClip;
+
+    public static TaskManager Instance { get; private set; }
+
     public Canvas resultsCanvas;        // Canvas с итоговым экраном (изначально отключен)
     public TMP_Text resultsText;           // UI Text для вывода списка результатов
 
     private int currentActionIndex = 0;
     private bool scenarioCompleted = false;
+
+    void Awake()
+    {
+        if (Instance == null) Instance = this;
+        else { Destroy(gameObject); return; }
+    }
+
+    void OnEnable() => ActionHandler.OnAnyTriggered += OnAnyTriggered;
+    void OnDisable() => ActionHandler.OnAnyTriggered -= OnAnyTriggered;
 
     void Start()
     {
@@ -96,6 +108,26 @@ public class TaskManager : MonoBehaviour
         {
             // idx < currentStepIndex: событие от уже пройденного шага (можно игнорировать)
         }
+    }
+    private void OnAnyTriggered(ActionHandler triggered)
+    {
+        if (scenarioCompleted || currentActionIndex >= steps.Count) return;
+
+        var expected = steps[currentActionIndex];
+
+        // Если нужен именно этот объект – его Handler сам завершит шаг
+        if (triggered == expected) return;
+
+        // Тип совпал, но объект другой → промах
+        if (triggered.GetType() == expected.GetType() &&
+            expected.status == ActionStatus.NotStarted)
+        {
+            Debug.Log($"Промах: ожидали '{expected.name}', а получили '{triggered.name}'");
+            expected.status = ActionStatus.CompletedWithError;
+            OnActionCompleted(expected);           // форсируем переход
+        }
+
+        // Для действия иного типа решайте сами (обычно игнор)
     }
     private void EndAllActions()
     {

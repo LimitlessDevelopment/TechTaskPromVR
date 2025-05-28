@@ -15,6 +15,7 @@ public class PointerSelectHandler : ActionHandler
 
     private void OnPointerSelect(SelectEnterEventArgs args)
     {
+        FireTriggered();
         if (!isActiveAction)
         {
             // Кликнули на объект раньше, чем нужно

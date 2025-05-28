@@ -13,6 +13,10 @@ public abstract class ActionHandler : MonoBehaviour
 
     public delegate void ActionActivated(ActionHandler action);
     public event ActionActivated OnActionActivated;
+
+    public delegate void AnyTriggered(ActionHandler action);
+    public static event AnyTriggered OnAnyTriggered;
+
     protected bool isActiveAction = false; // Активен ли сейчас этот шаг
 
     // Вызывается менеджером , когда шаг становится текущим
@@ -21,6 +25,12 @@ public abstract class ActionHandler : MonoBehaviour
         isActiveAction = true;
         OnActionActivated?.Invoke(this);
 
+    }
+    //выываем этот метод в наследниках, когда пользователь СОВЕРШИЛ действие
+    protected void FireTriggered()
+    {
+        OnAnyTriggered?.Invoke(this);
+        Debug.Log("aaaa");
     }
     // Завершение шага (вызывается из подклассов при выполнении действия)
     protected void CompleteAction(bool withError)

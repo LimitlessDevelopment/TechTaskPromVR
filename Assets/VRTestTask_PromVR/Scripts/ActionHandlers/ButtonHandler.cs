@@ -13,6 +13,7 @@ public class ButtonHandler : ActionHandler
 
     private void OnButtonPressed()
     {
+        FireTriggered();
         if (!isActiveAction)
         {
             // Нажали кнопку в неположенное время (например, раньше шага)

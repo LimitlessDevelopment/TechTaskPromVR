@@ -16,8 +16,8 @@ public class GrabHandler : ActionHandler
 
     private void OnGrabbed(SelectEnterEventArgs args)
     {
+        FireTriggered();
         // Вызывается, когда объект взят любым XR Interactor (рукой пользователя)
-        Debug.Log("0grabbed");
         if (!isActiveAction)
         {
             // Объект взяли вне последовательности (раньше времени)
@@ -26,6 +26,5 @@ public class GrabHandler : ActionHandler
         }
         // Объект взят в нужный момент
         CompleteAction(withError: false);
-        Debug.Log("grabbed");
     }
 }
