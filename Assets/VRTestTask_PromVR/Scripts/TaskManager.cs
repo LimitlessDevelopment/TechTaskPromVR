@@ -6,114 +6,156 @@ using System.Collections.Generic;
 using static ActionHandler;
 using UnityEngine.Audio;
 using TMPro;
+using UnityEngine.Events;
 
 
 public class TaskManager : MonoBehaviour
 {
-    public List<ActionHandler> steps;            // Список шагов в порядке выполнения
-    //public AudioSource audioSource;
-    //public AudioClip successClip;
-    //public AudioClip errorClip;
+    [System.Serializable]
+    public class Group
+    {
+        public string title = "Новая группа";
+        public List<ActionHandler> steps = new();
+    }
 
-    public static TaskManager Instance { get; private set; }
+    [Header("Сценарий")]
+    public List<Group> groups = new();          // ↔ заполняете в инспекторе
 
-    public Canvas resultsCanvas;        // Canvas с итоговым экраном (изначально отключен)
     public TMP_Text resultsText;           // UI Text для вывода списка результатов
 
-    private int currentActionIndex = 0;
-    private bool scenarioCompleted = false;
+    public UnityEvent OnWrongAction;
+    public UnityEvent OnRightAction;
+    public UnityEvent OnGroupEnded;
+    public UnityEvent OnSceneEnded;
+    public UnityEvent OnActionStarted;
+    public UnityEvent OnActionEnded;
+    public UnityEvent OnActionSkiped;
 
-    void Awake()
-    {
-        if (Instance == null) Instance = this;
-        else { Destroy(gameObject); return; }
-    }
+    private int _currentActionIndex = 0;
+    private int _currentGroupIndex = 0;
+    private bool _scenarioCompleted = false;
 
     void OnEnable() => ActionHandler.OnAnyTriggered += OnAnyTriggered;
     void OnDisable() => ActionHandler.OnAnyTriggered -= OnAnyTriggered;
 
-    void Start()
+    void Start() => InitializeGroups();
+
+
+    private void InitializeGroups()
     {
         // Подписываемся на события всех шагов и сбрасываем статусы
-        for (int i = 0; i < steps.Count; i++)
+        foreach (var group in groups)
         {
-            ActionHandler step = steps[i];
-            if(step == null)
+            for (int i = 0; i < group.steps.Count; i++)
             {
-                Debug.LogWarning("Action Not found!");
-                return;
-            } 
-            step.ActionIndex = i; // убедимся, что индекс соответствует позиции в списке
-            step.status = ActionStatus.NotStarted;
-            step.OnActionCompleted += OnActionCompleted;
-        }
-        // Активируем первый шаг
-        if (steps.Count > 0)
-        {
-            ActivateStep(0);
+                ActionHandler step = group.steps[i];
+                if (step == null)
+                {
+                    Debug.LogWarning("Action Not found!");
+                    return;
+                }
+                step.ActionIndex = i; // убедимся, что индекс соответствует позиции в списке
+                step.status = ActionStatus.NotStarted;
+                step.OnActionCompleted += OnActionCompleted;
+            }
         }
     }
-    private void ActivateStep(int index)
+
+    private void ActivateStep(int groupIndex, int stepIndex)
     {
-        currentActionIndex = index;
-        if (currentActionIndex < steps.Count)
+        _currentActionIndex = stepIndex;
+        _currentGroupIndex = groupIndex;
+
+        if (_currentActionIndex < groups[_currentGroupIndex].steps.Count)
         {
-            ActionHandler step = steps[currentActionIndex];
+            ActionHandler step = groups[_currentGroupIndex].steps[_currentActionIndex];
             step.ActivateStep();
+            OnActionStarted?.Invoke();
             // Можно показать подсказку или уведомление о новом шаге (например, текст инструкции)
             Debug.Log("Начало шага: " + step.description);
         }
     }
     private void OnActionCompleted(ActionHandler completedAction)
     {
-        int idx = completedAction.ActionIndex;
-       // bool wasError = (completedAction.status == ActionStatus.CompletedWithError);
-        if (scenarioCompleted) return;  // если сценарий уже завершён, игнорируем события
+        int actionIndex = completedAction.ActionIndex;
+        // bool wasError = (completedAction.status == ActionStatus.CompletedWithError);
 
-        if (idx == currentActionIndex)
+        if (_scenarioCompleted) return;  // если сценарий уже завершён, игнорируем события
+
+        if (actionIndex == _currentActionIndex)
         {
             // Завершён ожидаемый текущий шаг
 
             // Переходим к следующему шагу
-            int nextIndex = currentActionIndex + 1;
-            if (nextIndex < steps.Count)
+            int nextIndex = _currentActionIndex + 1;
+            if (nextIndex < groups[_currentGroupIndex].steps.Count)
             {
+                if(completedAction.status == ActionStatus.CompletedCorrect) OnRightAction?.Invoke();
+                if(completedAction.status == ActionStatus.CompletedWithError) OnWrongAction?.Invoke();
+
                 Debug.Log("Завершение шага: " + completedAction.description);
-                ActivateStep(nextIndex);
+                OnActionEnded?.Invoke();
+                ActivateStep(_currentGroupIndex, nextIndex);
             }
             else
             {
-                EndAllActions();
+                FindNextNonEmptyGroup(_currentGroupIndex + 1);
             }
         }
-        else if (idx > currentActionIndex)
+        else if (actionIndex > _currentActionIndex)
         {
             // Выполнен шаг впереди текущего (нарушена последовательность)
+            OnActionSkiped?.Invoke();
             // Отметим все шаги, которые перепрыгнули, как пропущенные
-            for (int skip = currentActionIndex; skip < idx; skip++)
+
+            for (int skip = _currentActionIndex; skip < actionIndex; skip++)
             {
-                steps[skip].status = ActionStatus.Skipped;
+                groups[_currentGroupIndex].steps[skip].status = ActionStatus.Skipped;
             }
             // Переходим на шаг после него
-            if (idx + 1 < steps.Count)
+            if (actionIndex + 1 < groups[_currentGroupIndex].steps.Count)
             {
-                ActivateStep(idx + 1);
+                ActivateStep(_currentGroupIndex, actionIndex + 1);
             }
             else
             {
-                EndAllActions();
+                FindNextNonEmptyGroup(_currentGroupIndex + 1);
             }
         }
         else
         {
-            // idx < currentStepIndex: событие от уже пройденного шага (можно игнорировать)
+            //событие от уже пройденного шага (можно игнорировать)
         }
     }
+
+    private void FindNextNonEmptyGroup(int startG)
+    {
+        bool found = false;
+        for (int g = startG; g < groups.Count; g++)
+        {
+            if (groups[g].steps.Count > 0)
+            {
+                _currentGroupIndex = g;
+                _currentActionIndex = 0;
+                found = true;
+            }
+        }
+
+        if (found)
+        {
+            OnGroupEnded?.Invoke(); 
+            ActivateStep(_currentGroupIndex, _currentActionIndex); // здесь
+            Debug.Log("New groupe");
+        }
+
+        else EndAllActions();
+    }
+
     private void OnAnyTriggered(ActionHandler triggered)
     {
-        if (scenarioCompleted || currentActionIndex >= steps.Count) return;
+        if (_scenarioCompleted || _currentActionIndex >= groups[_currentGroupIndex].steps.Count) return;
 
-        var expected = steps[currentActionIndex];
+        var expected = groups[_currentGroupIndex].steps[_currentActionIndex];
 
         // Если нужен именно этот объект – его Handler сам завершит шаг
         if (triggered == expected) return;
@@ -131,25 +173,40 @@ public class TaskManager : MonoBehaviour
     }
     private void EndAllActions()
     {
-        scenarioCompleted = true;
+        _scenarioCompleted = true;
+
+        OnSceneEnded?.Invoke(); 
         // Формируем текст отчёта по шагам
         string resultStr = "Результаты тренировки:\n";
-        foreach (ActionHandler step in steps)
+        foreach (var group in groups)
         {
-            string statusStr;
-            switch (step.status)
+            resultStr += "\n" + group.title + ":";
+            foreach (ActionHandler step in group.steps)
             {
-                case ActionStatus.CompletedCorrect: statusStr = "✔️ Выполнено"; break;
-                case ActionStatus.CompletedWithError: statusStr = "❌ С ошибкой"; break;
-                case ActionStatus.Skipped: statusStr = "⚠️ Пропущен"; break;
-                default: statusStr = "—"; break;
+                string statusStr;
+                switch (step.status)
+                {
+                    case ActionStatus.CompletedCorrect: statusStr = "✔️ Выполнено"; break;
+                    case ActionStatus.CompletedWithError: statusStr = "❌ С ошибкой"; break;
+                    case ActionStatus.Skipped: statusStr = "⚠️ Пропущен"; break;
+                    default: statusStr = "—"; break;
+                }
+                resultStr += $"- Шаг {step.ActionIndex + 1}: {step.description} — {statusStr}\n";
             }
-            resultStr += $"- Шаг {step.ActionIndex+ 1}: {step.description} — {statusStr}\n";
+
         }
         resultsText.text = resultStr;
-        resultsCanvas.enabled = true;
         // Сохранение результатов (пример: количество ошибок в PlayerPrefs)
 
+    }
+
+    public void ActivateFirstStep()
+    {
+        // Активируем первый шаг
+        if (groups[_currentGroupIndex].steps.Count > 0)
+        {
+            ActivateStep(_currentGroupIndex, 0);
+        }
     }
     public void RestartScene()
     {
